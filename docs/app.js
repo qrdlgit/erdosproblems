@@ -174,6 +174,102 @@ function handleSortClick(event) {
     saveStateToURL(getCurrentState());
 }
 
+function export_problems(problems, opts = {}) {
+  const {
+    format = (document.getElementById("export-format")?.value || "json"),
+    filenamePrefix = "erdosproblems_filtered",
+    prettyJson = true,
+    includeTimestamp = true
+  } = opts;
+
+  if (!Array.isArray(problems) || problems.length === 0) {
+    alert("No problems to export (current filter result is empty).");
+    return;
+  }
+
+  const timestamp = includeTimestamp
+    ? new Date().toISOString().replace(/[:.]/g, "-")
+    : "";
+
+  const baseName = timestamp ? `${filenamePrefix}_${timestamp}` : filenamePrefix;
+
+  if (format === "csv") {
+    const csv = problemsToCSV(problems);
+    downloadTextFile(`${baseName}.csv`, csv, "text/csv;charset=utf-8");
+    return;
+  }
+
+  // default: JSON
+  const json = prettyJson ? JSON.stringify(problems, null, 2) : JSON.stringify(problems);
+  downloadTextFile(`${baseName}.json`, json, "application/json;charset=utf-8");
+}
+
+function downloadTextFile(filename, text, mimeType) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function problemsToCSV(problems) {
+  // Pick stable, human-usable columns for a flat export
+  const headers = ["number", "prize", "status", "formalized", "oeis", "tags", "comments"];
+
+  const rows = problems.map(p => {
+    const number = p?.number ?? "";
+    const prize = p?.prize ?? "";
+    const status = normalizeStatus(p?.status);
+    const formalized = normalizeFormalized(p?.formalized);
+    const oeis = Array.isArray(p?.oeis) ? p.oeis.join(" ") : (p?.oeis ?? "");
+    const tags = Array.isArray(p?.tags) ? p.tags.join(" ") : (p?.tags ?? "");
+    const comments = p?.comments ?? "";
+
+    return [number, prize, status, formalized, oeis, tags, comments].map(csvCell);
+  });
+
+  return [headers.map(csvCell).join(","), ...rows.map(r => r.join(","))].join("\n");
+}
+
+function normalizeStatus(status) {
+  if (status == null) return "";
+  if (typeof status === "string") return status;
+  // Your data uses objects in some places (e.g. status/state fields)
+  if (typeof status === "object") {
+    return status.state ?? status.status ?? JSON.stringify(status);
+  }
+  return String(status);
+}
+
+function normalizeFormalized(formalized) {
+  if (formalized == null) return "";
+  if (typeof formalized === "string") return formalized;
+  if (typeof formalized === "object") {
+    return formalized.state ?? formalized.formalized ?? JSON.stringify(formalized);
+  }
+  return String(formalized);
+}
+
+function csvCell(value) {
+  const s = value == null ? "" : String(value);
+  // Escape for CSV: wrap in quotes if it contains commas/quotes/newlines
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+
+
+
+
+
 /**
  * Update table with current filters and sort
  */
@@ -312,6 +408,15 @@ async function initialize() {
         loadingIndicator.style.display = 'none';
     }
 
+   
+    const btn = document.getElementById("export-problems");
+    if (!btn) return;
+    
+    btn.addEventListener("click", () => {
+    // filteredProblems is updated every time updateTable() runs :contentReference[oaicite:1]{index=1}
+    export_problems(filteredProblems);
+    });
+    
     console.log(`Loaded ${allProblems.length} problems successfully`);
 }
 
